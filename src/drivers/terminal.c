@@ -48,7 +48,7 @@ void terminal_putchar(char c)
 	if (c == '\n')
 	{
 		terminal_row++;
-		terminal_column = 0;
+		terminal_column = -1;
 	}
 	else
 	{

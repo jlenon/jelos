@@ -31,7 +31,7 @@ void kernel_main(struct kernel_memory_t kernel_memory, uint32_t ebx)
  
 	/* Newline support is left as an exercise. */
 	terminal_writestring("Welcome to JELOS - v1!\n");
-
+	terminal_writestring("\n");
 	terminal_writestring("Kernel Virtual Start = ");
 	terminal_writehex(kernel_memory.virtual_start);
 	terminal_writestring("\n");
