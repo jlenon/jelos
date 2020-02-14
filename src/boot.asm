@@ -1,4 +1,4 @@
-global loader                   ; the entry symbol for ELF
+;global loader                   ; the entry symbol for ELF
                                 ; 'global' is a directive that includes this
                                 ; symbol in the symbol table. Directives appear
                                 ; at the start of the file. 'global' exports and
@@ -39,24 +39,30 @@ align 4
 ;https://medium.com/@connorstack/how-does-a-higher-half-kernel-work-107194e46a64
 section .data
 align 0x1000 ; align to 4KB, the size of a page
-global PageDirectoryVirtualAddress
-PageDirectoryVirtualAddress:
+global page_directory_virtual_address
+page_directory_virtual_address:
     ; the first entry identity maps the first 4MB of memory
     ; All bits are clear except the following:
     ; bit 7: PS The kernel page is 4MB.
     ; bit 1: RW The kernel page is read/write.
     ; bit 0: P  The kernel page is present.
-    dd 0x00000083 ; in binary this is 10000011    ; entries for unmapped virtual addresses
+    ;dd 0x00000083 ; in binary this is 10000011    ; entries for unmapped virtual addresses
     
 	; Pages before kernel space.
-	times (KERNEL_PAGE_NUMBER - 1) dd 0     
+	;times (KERNEL_PAGE_NUMBER - 1) dd 0     
 	
 	; entry for the kernel's virtual address
-    dd 0x00000083    
+    ;dd 0x00000083    
 	
 	; entries for unmapped addresses above the kernel
-    times (1024 - KERNEL_PAGE_NUMBER - 1) dd 0
+    ;times (1024 - KERNEL_PAGE_NUMBER - 1) dd 0
 
+	times (1024) dd 0	;4KB page
+
+global page_table1_virtual_address
+page_table1_virtual_address:
+
+	times (1024) dd 0	;4KB page
  
 ; The linker script specifies _start as the entry point to the kernel and the
 ; bootloader will jump to this position once the kernel has been loaded. It
@@ -79,26 +85,70 @@ start equ (_start - KERNEL_VIRTUAL_BASE)
 	; itself. It has absolute and complete power over the
 	; machine.
  
-	;turn on paging
-	global PageDirectoryPhysicalAddress
-	PageDirectoryPhysicalAddress equ (PageDirectoryVirtualAddress - KERNEL_VIRTUAL_BASE) ; 0x104000
-	mov ecx, PageDirectoryPhysicalAddress; Copy the physical address of the top-level page table
-	mov cr3, ecx ; Tell the CPU the physical address of the page table
+	global page_directory_physical_address
+	page_directory_physical_address equ (page_directory_virtual_address - KERNEL_VIRTUAL_BASE) ; 0x104000
 
-	mov ecx, cr4
-    or ecx, 0x00000010                          ; Set PSE bit in CR4 to enable 4MB pages.
-    mov cr4, ecx
- 
-    mov ecx, cr0
-    or ecx, 0x80000000                          ; Set PG bit in CR0 to enable paging.
-    mov cr0, ecx
+	;set up 4KB paging
+	mov edi, (page_table1_virtual_address - KERNEL_VIRTUAL_BASE)
 
-	lea ecx, [StartInHigherHalf] ; Load the 32-bit virtual address of the label StartInHigherHalf into register ecx
-	jmp ecx ; Jump to the address stored in ecx
+	mov esi, 0x00
+	; Map 1023 pages. The 1024th will be the VGA text buffer.
+	mov ecx ,1023d
+.1:
+	; Only map the kernel.
+	cmp esi, (kernel_virtual_start - KERNEL_VIRTUAL_BASE)
+	jl .2
+	cmp esi, (kernel_virtual_end - KERNEL_VIRTUAL_BASE)
+	jge .3
+
+	;Map physical address as "present, writable". Note that this maps
+	;.text and .rodata as writable. Mind security and map them as non-writable.
+	; bit 1: RW The kernel page is read/write.
+    ; bit 0: P  The kernel page is present.
+	mov edx, esi
+	or edx, 0x003
+	mov [edi], edx
+
+.2:
+	;Size of page is 4096 bytes.
+	add esi, 0x1000
+	;Size of entries in boot_page_table1 is 4 bytes.
+	add edi, 4
+	;Loop to the next entry if we haven't finished.
+	loop .1
+
+.3:
+	;Map VGA video memory to 0xC03FF000 as "present, writable".
+	mov dword [page_table1_virtual_address - KERNEL_VIRTUAL_BASE + 1023 * 4], (0x000B8000 | 0x003)
+
+	;The page table is used at both page directory entry 0 (virtually from 0x0
+	;to 0x3FFFFF) (thus identity mapping the kernel) and page directory entry
+	;768 (virtually from 0xC0000000 to 0xC03FFFFF) (thus mapping it in the
+	;higher half). The kernel is identity mapped because enabling paging does
+	;not change the next instruction, which continues to be physical. The CPU
+	; would instead page fault if there was no identity mapping.
+
+	;Map the page table to both virtual addresses 0x00000000 and 0xC0000000.
+	mov dword [page_directory_virtual_address - KERNEL_VIRTUAL_BASE + 0], (page_table1_virtual_address - KERNEL_VIRTUAL_BASE + 0x003)
+	mov dword [page_directory_virtual_address - KERNEL_VIRTUAL_BASE + 768 * 4], (page_table1_virtual_address - KERNEL_VIRTUAL_BASE + 0x003)
+
+	;Set cr3 to the address of the boot_page_directory.
+	mov ecx, page_directory_physical_address
+	mov cr3, ecx
+
+	;Enable paging and the write-protect bit.
+	mov ecx, cr0
+	or ecx, 0x80010000
+	mov cr0, ecx
+
+	;Jump to higher half with an absolute jump. 
+	lea ecx, [StartInHigherHalf]
+	jmp ecx
+
 StartInHigherHalf:
 
 	; zero-out the first entry in the page directory
-	mov dword [PageDirectoryVirtualAddress], 0; tell the CPU the first entry has changed
+	mov dword [page_directory_virtual_address], 0; tell the CPU the first entry has changed
 	invlpg [0]
 
 	; To set up a stack, we set the esp register to point to the top of our
@@ -114,14 +164,12 @@ StartInHigherHalf:
              ; among other things, describes at which addresses the modules are loaded.
              ; Push ebx on the stack before calling kmain to make it an argument for kmain.
 
-	push PageDirectoryPhysicalAddress
+	push page_directory_physical_address
     push kernel_physical_end
     push kernel_physical_start
     push kernel_virtual_end
     push kernel_virtual_start
 	
-
- 
 	; This is a good place to initialize crucial processor state before the
 	; high-level kernel is entered. It's best to minimize the early
 	; environment where crucial features are offline. Note that the
