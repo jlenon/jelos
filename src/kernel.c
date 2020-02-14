@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "drivers/terminal.h"
+#include "system/gdt.h"
  
 /* Check if the compiler thinks you are targeting the wrong operating system. */
 #if defined(__linux__)
@@ -29,8 +30,7 @@ void kernel_main(struct kernel_memory_t kernel_memory, uint32_t ebx)
 	/* Initialize terminal interface */
 	terminal_initialize();
  
-	/* Newline support is left as an exercise. */
-	terminal_writestring("Welcome to JELOS - v1!\n");
+	terminal_writestring("Welcome to JELOS - v2!\n");
 	terminal_writestring("\n");
 	terminal_writestring("Kernel Virtual Start = ");
 	terminal_writehex(kernel_memory.virtual_start);
@@ -46,5 +46,9 @@ void kernel_main(struct kernel_memory_t kernel_memory, uint32_t ebx)
 	terminal_writestring("\n");
 	terminal_writestring("Page Dir Phyisical = ");
 	terminal_writehex(kernel_memory.page_directory_physical);
-	terminal_writestring("\n");
+	terminal_writestring("\n\n");
+
+	/* Initialize Global Descriptior Tables */
+	gdt_initialize();
+	terminal_writestring("Global Descriptior Table initialised\n\n");
 }

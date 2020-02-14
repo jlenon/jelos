@@ -97,9 +97,9 @@ start equ (_start - KERNEL_VIRTUAL_BASE)
 .1:
 	; Only map the kernel.
 	cmp esi, (kernel_virtual_start - KERNEL_VIRTUAL_BASE)
-	jl .2
+	jl .2  ;we have't hit the start of the kernel yet
 	cmp esi, (kernel_virtual_end - KERNEL_VIRTUAL_BASE)
-	jge .3
+	jge .3 ;we're past the kernel end
 
 	;Map physical address as "present, writable". Note that this maps
 	;.text and .rodata as writable. Mind security and map them as non-writable.
