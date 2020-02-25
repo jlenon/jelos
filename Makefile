@@ -5,7 +5,7 @@ LD=~/opt/cross/bin/i686-elf-gcc
 CSRC = $(shell find src -type f -name '*.c')
 COBJ = $(patsubst src/%.c, obj/%.o, $(CSRC))
 ASMSRC = $(shell find src -type f -name '*.asm')
-ASMOBJ = $(patsubst src/%.asm, obj/%.o, $(ASMSRC))
+ASMOBJ = $(patsubst src/%.asm, obj/%_s.o, $(ASMSRC))
 
 all: jelos.bin
 
@@ -15,7 +15,7 @@ jelos.bin: $(COBJ) $(ASMOBJ)
 obj/%.o: src/%.c
 	 $(CC) $(CFLAGS) -o $@ -c $<
      
-obj/%.o: src/%.asm
+obj/%_s.o: src/%.asm
 	 nasm -felf32 -o $@ $<
 
 clean:
